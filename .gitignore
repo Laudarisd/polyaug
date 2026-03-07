@@ -12,7 +12,7 @@
 .github/*
 !.github/workflows/
 .github/workflows/*
-!.github/workflows/smoke.yml
+!.github/workflows/ci.yml
 
 # Keep only the core package entry points
 !src/
