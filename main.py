@@ -151,7 +151,7 @@ def main() -> None:
         params=augmentation_params,
     )
 
-    from src.main_aug import IndexPreservingPolygonAugmentor
+    from src.augmentor import IndexPreservingPolygonAugmentor
 
     augmentor = IndexPreservingPolygonAugmentor(debug=args.debug)
     augmentor.augment_dataset(
