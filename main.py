@@ -6,9 +6,14 @@ from pathlib import Path
 
 def _load_augmentor_module():
     """Dynamically load augmentor module from path because folder name has a hyphen."""
-    module_path = Path("seg-topo-augment/polygon_to_aug_original.py")
-    if not module_path.exists():
-        raise FileNotFoundError(f"Missing module: {module_path}")
+    project_root = Path(__file__).resolve().parent
+    candidate_paths = [
+        project_root / "seg-topo-augment/polygon_to_aug.py"
+    ]
+    module_path = next((p for p in candidate_paths if p.exists()), None)
+    if module_path is None:
+        expected = ", ".join(str(p) for p in candidate_paths)
+        raise FileNotFoundError(f"Missing augmentor module. Checked: {expected}")
 
     spec = importlib.util.spec_from_file_location("polygon_to_aug_original", module_path)
     if spec is None or spec.loader is None:

@@ -1,10 +1,15 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+# Ignore everything by default
+/*
 
-# Virtual environments
-.venv
+# Keep repository metadata and publishable files
+!.gitignore
+!README.md
+!pyproject.toml
+!uv.lock
+!run_augmentation.sh
+
+# Keep only the core package entry points
+!ringaug/
+ringaug/*
+!ringaug/__init__.py
+!ringaug/main_aug.py
