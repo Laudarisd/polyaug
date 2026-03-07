@@ -27,4 +27,4 @@ jobs:
         run: uv run python main.py --help
 
       - name: Import app module check
-        run: uv run python -c "import src.main_aug; print('app-ok')"
+        run: uv run python -c "import src.augmentor; print('app-ok')"
