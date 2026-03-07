@@ -1,59 +1,44 @@
-# Run from project root: python main.py --original-img-dir seg-topo-augment/images --original-json-dir seg-topo-augment/json --output-dir seg-topo-augment/augmented --num-per-image 2
 import argparse
-import importlib.util
 from pathlib import Path
+from typing import Sequence
 
 
-def _load_augmentor_module():
-    """Dynamically load augmentor module from path because folder name has a hyphen."""
-    project_root = Path(__file__).resolve().parent
-    candidate_paths = [
-        project_root / "seg-topo-augment/polygon_to_aug.py"
-    ]
-    module_path = next((p for p in candidate_paths if p.exists()), None)
-    if module_path is None:
-        expected = ", ".join(str(p) for p in candidate_paths)
-        raise FileNotFoundError(f"Missing augmentor module. Checked: {expected}")
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="ringaug",
+        description="Run RingAug polygon augmentation on LabelMe image/json datasets.",
+    )
 
-    spec = importlib.util.spec_from_file_location("polygon_to_aug_original", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load module spec from: {module_path}")
+    # Required inputs
+    parser.add_argument("--img", "--img-dir", dest="img_dir", required=True, help="Directory containing source images.")
+    parser.add_argument("--json", "--json-dir", dest="json_dir", required=True, help="Directory containing source LabelMe JSON files.")
 
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _build_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run polygon topology augmentation from project root.")
-
-    # Input/Output paths.
-    parser.add_argument("--original-img-dir", default="seg-topo-augment/images", help="Directory containing source images.")
-    parser.add_argument("--original-json-dir", default="seg-topo-augment/json", help="Directory containing source LabelMe JSON files.")
-    parser.add_argument("--output-dir", default="seg-topo-augment/augmented", help="Root output directory.")
+    # Outputs
+    parser.add_argument(
+        "--save",
+        "--save-dir",
+        dest="save_dir",
+        default="./aug_result",
+        help="Output root directory. Defaults to ./aug_result",
+    )
     parser.add_argument(
         "--index-json-dir",
         default="",
-        help="Optional indexed JSON output directory. If empty, uses <output-dir>/augmented_index_json.",
+        help="Optional indexed JSON output directory. Defaults to <save>/augmented_index_json",
     )
 
-    # How many augmented samples to generate per source image.
+    # Count
     parser.add_argument("--num-per-image", type=int, default=2, help="Number of augmentations per source image.")
 
-    # Augmentation ranges and probabilities.
-    parser.add_argument("--crop-scale-min", type=float, default=0.8)
-    parser.add_argument("--crop-scale-max", type=float, default=0.9)
-    parser.add_argument("--angle-min", type=float, default=-30.0)
-    parser.add_argument("--angle-max", type=float, default=30.0)
-    parser.add_argument("--scale-min", type=float, default=0.7)
-    parser.add_argument("--scale-max", type=float, default=1.3)
-    parser.add_argument("--translate-min", type=float, default=-0.1)
-    parser.add_argument("--translate-max", type=float, default=0.1)
-    parser.add_argument("--brightness-min", type=float, default=-0.1)
-    parser.add_argument("--brightness-max", type=float, default=0.1)
-    parser.add_argument("--contrast-min", type=float, default=-0.1)
-    parser.add_argument("--contrast-max", type=float, default=0.1)
+    # Augmentation ranges
+    parser.add_argument("--crop", nargs=2, type=float, metavar=("MIN", "MAX"), default=[0.8, 0.9])
+    parser.add_argument("--rotation", nargs=2, type=float, metavar=("MIN", "MAX"), default=[-30.0, 30.0])
+    parser.add_argument("--scale", nargs=2, type=float, metavar=("MIN", "MAX"), default=[0.7, 1.3])
+    parser.add_argument("--translate", nargs=2, type=float, metavar=("MIN", "MAX"), default=[-0.1, 0.1])
+    parser.add_argument("--brightness", nargs=2, type=float, metavar=("MIN", "MAX"), default=[-0.1, 0.1])
+    parser.add_argument("--contrast", nargs=2, type=float, metavar=("MIN", "MAX"), default=[-0.1, 0.1])
 
+    # Probabilities and repair controls
     parser.add_argument("--p-rotate", type=float, default=0.9)
     parser.add_argument("--p-flip-h", type=float, default=0.2)
     parser.add_argument("--p-flip-v", type=float, default=0.1)
@@ -65,35 +50,89 @@ def _build_args() -> argparse.Namespace:
     parser.add_argument("--min-component-area", type=float, default=12.0)
     parser.add_argument("--min-mask-pixel-area", type=float, default=12.0)
     parser.add_argument("--random-aug-per-image", type=int, default=3)
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging in augmentor.")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logs in the augmentor.")
 
-    return parser.parse_args()
+    return parser
 
 
-def main():
-    args = _build_args()
+def _validate_range(name: str, values: Sequence[float]) -> tuple[float, float]:
+    low = float(values[0])
+    high = float(values[1])
+    if low > high:
+        raise ValueError(f"{name}: minimum cannot be greater than maximum ({low} > {high})")
+    return (low, high)
 
-    module = _load_augmentor_module()
-    augmentor = module.IndexPreservingPolygonAugmentor(debug=args.debug)
 
-    output_root = Path(args.output_dir)
-    save_img_dir = output_root / "images"
-    save_json_dir = output_root / "json"
-    save_index_json_dir = Path(args.index_json_dir) if args.index_json_dir else output_root / "augmented_index_json"
+def _print_run_summary(
+    img_dir: Path,
+    json_dir: Path,
+    save_dir: Path,
+    save_img_dir: Path,
+    save_json_dir: Path,
+    save_index_json_dir: Path,
+    num_per_image: int,
+    params: dict,
+) -> None:
+    print("Image Dir:", img_dir)
+    print("Json Dir:", json_dir)
+    print("Chosen Augmentation Parameters:")
+    print("crop:", list(params["crop_scale_range"]))
+    print("rotation:", list(params["angle_limit"]))
+    print("scale:", list(params["scale_limit"]))
+    print("translate:", list(params["translate_limit"]))
+    print("brightness:", list(params["brightness_limit"]))
+    print("contrast:", list(params["contrast_limit"]))
+    print("p_rotate:", params["p_rotate"])
+    print("p_flip_h:", params["p_flip_h"])
+    print("p_flip_v:", params["p_flip_v"])
+    print("p_affine:", params["p_affine"])
+    print("p_crop:", params["p_crop"])
+    print("p_brightness:", params["p_brightness"])
+    print("contour_simplify_epsilon:", params["contour_simplify_epsilon"])
+    print("min_component_area:", params["min_component_area"])
+    print("min_mask_pixel_area:", params["min_mask_pixel_area"])
+    print("random_aug_per_image:", params["random_aug_per_image"])
+    print("num_per_image:", num_per_image)
+    print("Save_dir:", save_dir)
+    print("Output Images:", save_img_dir)
+    print("Output Json:", save_json_dir)
+    print("Output Indexed Json:", save_index_json_dir)
 
-    # Single dict passed through to augmentor.
+
+def main() -> None:
+    parser = _build_parser()
+    args = parser.parse_args()
+
+    try:
+        crop = _validate_range("crop", args.crop)
+        rotation = _validate_range("rotation", args.rotation)
+        scale = _validate_range("scale", args.scale)
+        translate = _validate_range("translate", args.translate)
+        brightness = _validate_range("brightness", args.brightness)
+        contrast = _validate_range("contrast", args.contrast)
+    except ValueError as err:
+        parser.error(str(err))
+
+    img_dir = Path(args.img_dir)
+    json_dir = Path(args.json_dir)
+    save_root = Path(args.save_dir)
+
+    save_img_dir = save_root / "images"
+    save_json_dir = save_root / "json"
+    save_index_json_dir = Path(args.index_json_dir) if args.index_json_dir else save_root / "augmented_index_json"
+
     augmentation_params = {
-        "crop_scale_range": (args.crop_scale_min, args.crop_scale_max),
-        "angle_limit": (args.angle_min, args.angle_max),
+        "crop_scale_range": crop,
+        "angle_limit": rotation,
         "p_rotate": args.p_rotate,
         "p_flip_h": args.p_flip_h,
         "p_flip_v": args.p_flip_v,
         "p_affine": args.p_affine,
-        "scale_limit": (args.scale_min, args.scale_max),
-        "translate_limit": (args.translate_min, args.translate_max),
+        "scale_limit": scale,
+        "translate_limit": translate,
         "p_crop": args.p_crop,
-        "brightness_limit": (args.brightness_min, args.brightness_max),
-        "contrast_limit": (args.contrast_min, args.contrast_max),
+        "brightness_limit": brightness,
+        "contrast_limit": contrast,
         "p_brightness": args.p_brightness,
         "contour_simplify_epsilon": args.contour_simplify_epsilon,
         "min_component_area": args.min_component_area,
@@ -101,9 +140,23 @@ def main():
         "random_aug_per_image": args.random_aug_per_image,
     }
 
+    _print_run_summary(
+        img_dir=img_dir,
+        json_dir=json_dir,
+        save_dir=save_root,
+        save_img_dir=save_img_dir,
+        save_json_dir=save_json_dir,
+        save_index_json_dir=save_index_json_dir,
+        num_per_image=args.num_per_image,
+        params=augmentation_params,
+    )
+
+    from src.main_aug import IndexPreservingPolygonAugmentor
+
+    augmentor = IndexPreservingPolygonAugmentor(debug=args.debug)
     augmentor.augment_dataset(
-        data_dir=args.original_img_dir,
-        json_dir=args.original_json_dir,
+        data_dir=img_dir,
+        json_dir=json_dir,
         save_img_dir=save_img_dir,
         save_json_dir=save_json_dir,
         save_index_json_dir=save_index_json_dir,

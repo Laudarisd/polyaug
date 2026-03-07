@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "polygon-topology-augment"
 version = "0.1.0"
@@ -13,3 +17,11 @@ dependencies = [
     "scipy>=1.17.0",
     "tqdm>=4.67.1",
 ]
+
+[project.scripts]
+ringaug = "main:main"
+rinaug = "main:main"
+
+[tool.setuptools]
+py-modules = ["main"]
+packages = ["src"]

@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import uuid
 from pathlib import Path
@@ -892,23 +893,31 @@ class IndexPreservingPolygonAugmentor:
         suffix = uuid.uuid4().hex[:6]
         aug_img_name = f"{base_name}_{suffix}_aug.png"
         aug_json_name = f"{base_name}_{suffix}_aug.json"
+        aug_img_path = out_img_dir / aug_img_name
 
-        cv2.imwrite(str(out_img_dir / aug_img_name), cv2.cvtColor(aug_image, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(str(aug_img_path), cv2.cvtColor(aug_image, cv2.COLOR_RGB2BGR))
 
-        base_json = {
+        # Keep LabelMe imagePath relative to each JSON location.
+        json_rel_image_path = Path(os.path.relpath(aug_img_path, start=out_json_dir)).as_posix()
+        index_rel_image_path = Path(os.path.relpath(aug_img_path, start=out_index_json_dir)).as_posix()
+
+        base_json_common = {
             "version": original_data.get("version", "5.5.0"),
             "flags": original_data.get("flags", {}),
-            "imagePath": f"..\\images\\{aug_img_name}",
             "imageData": None,
             "imageHeight": int(aug_image.shape[0]),
             "imageWidth": int(aug_image.shape[1]),
         }
 
         with open(out_json_dir / aug_json_name, "w", encoding="utf-8") as f:
-            json.dump({**base_json, "shapes": labelme_shapes}, f, indent=2)
+            json.dump({**base_json_common, "imagePath": json_rel_image_path, "shapes": labelme_shapes}, f, indent=2)
 
         with open(out_index_json_dir / aug_json_name, "w", encoding="utf-8") as f:
-            json.dump({**base_json, "shapes": labelme_shapes, **indexed_payload}, f, indent=2)
+            json.dump(
+                {**base_json_common, "imagePath": index_rel_image_path, "shapes": labelme_shapes, **indexed_payload},
+                f,
+                indent=2,
+            )
 
     # Build one index/debug record for a source polygon.
     @staticmethod
