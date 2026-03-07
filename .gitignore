@@ -11,5 +11,5 @@
 # Keep only the core package entry points
 !src/
 src/*
-!ringaug/__init__.py
-!ringaug/main_aug.py
+!src/__init__.py
+!src/main_aug.py
