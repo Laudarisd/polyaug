@@ -1,3 +1,5 @@
+"""Core augmentation engine for LabelMe polygons with index-preserving repair."""
+
 import json
 import os
 import random
@@ -39,9 +41,11 @@ class IndexPreservingPolygonAugmentor:
     # Build a random transform pipeline for one augmentation sample.
     def _build_transform(self, h: int, w: int, params: Dict[str, Any]) -> A.Compose:
         crop_scale_range = params.get("crop_scale_range", (0.8, 0.9))
+        # Sample crop dimensions once so RandomCrop stays within image bounds.
         crop_h = min(max(8, int(h * random.uniform(*crop_scale_range))), h)
         crop_w = min(max(8, int(w * random.uniform(*crop_scale_range))), w)
 
+        # Build a candidate pool, then sample a random subset each iteration.
         aug_pool = [
             A.Rotate(limit=params.get("angle_limit", (-20, 20)), p=params.get("p_rotate", 0.8)),
             A.HorizontalFlip(p=params.get("p_flip_h", 0.5)),
@@ -59,7 +63,9 @@ class IndexPreservingPolygonAugmentor:
             ),
         ]
         return A.Compose(
+            # Randomize op ordering and mix to increase augmentation diversity.
             random.sample(aug_pool, random.randint(2, min(4, len(aug_pool)))),
+            # Keep invisible keypoints; they are later projected to contour geometry.
             keypoint_params=A.KeypointParams(format="xy", remove_invisible=False),
         )
 
@@ -111,6 +117,7 @@ class IndexPreservingPolygonAugmentor:
         for src_idx, shape in enumerate(raw_shapes):
             label = str(shape.get("label", ""))
             points = shape["points"]
+            # Record source overlap constraints so repair can preserve intended topology.
             overlap_groups, overlap_pairs = self._detect_overlapped_vertices(points, eps=overlap_eps)
             overlap_pair_records = self._build_overlap_pair_records(points, overlap_pairs)
 
@@ -134,6 +141,7 @@ class IndexPreservingPolygonAugmentor:
                 "overlap_pair_records": overlap_pair_records,
             }
 
+            # Flatten all polygon points into a single keypoint list for Albumentations.
             for i, pt in enumerate(points):
                 flat_keypoints.append((float(pt[0]), float(pt[1])))
                 flat_meta.append((src_idx, i))
@@ -275,6 +283,7 @@ class IndexPreservingPolygonAugmentor:
             used_overlap_points.append(shared_point)
 
             for pv in members:
+                # Force each member of the overlap set onto the same projected location.
                 pv["transformed_point"] = [round(tx, 2), round(ty, 2)]
                 pv["projected_point"] = shared_point
                 pv["projected_component_index"] = shared_comp
@@ -309,6 +318,7 @@ class IndexPreservingPolygonAugmentor:
             if idx in protected_indices:
                 continue
 
+            # If a non-overlap vertex lands on an overlap point, reproject it elsewhere.
             px, py = float(pv["projected_point"][0]), float(pv["projected_point"][1])
             collided = False
             for ax, ay in protected_points:
@@ -321,6 +331,7 @@ class IndexPreservingPolygonAugmentor:
             tx = float(pv["transformed_point"][0])
             ty = float(pv["transformed_point"][1])
             if dense_contours:
+                # Keep a minimum separation from protected overlap anchors.
                 new_pt, dist, comp = self._nearest_point_on_contours_avoid_points(
                     tx,
                     ty,
@@ -376,6 +387,7 @@ class IndexPreservingPolygonAugmentor:
     ) -> Tuple[bool, bool, Any, Any, Any]:
         do_repair = len(lm_shapes) == 1 and len(dense_contours) == 1 and len(projected_vertices) >= 3
         if not do_repair:
+            # Repair is only safe for single-component polygons with enough vertices.
             return False, False, "broken_or_multi_component", None, None
 
         # Keep originally overlapped vertices overlapped after projection.
@@ -397,6 +409,7 @@ class IndexPreservingPolygonAugmentor:
         repaired_pairs = []
         for pv in ordered:
             tx, ty = float(pv["transformed_point"][0]), float(pv["transformed_point"][1])
+            # Clamp to image bounds to avoid out-of-frame coordinates.
             cx, cy = self._clamp_point(tx, ty, aug_w, aug_h)
             repaired_pairs.append((int(pv["original_index"]), [round(cx, 2), round(cy, 2)]))
         # Keep full original index connectivity when overlap/bridge vertices are present.
@@ -412,6 +425,7 @@ class IndexPreservingPolygonAugmentor:
         projection_distances = [
             float(pv["projection_distance"]) for pv in projected_vertices if pv.get("projection_distance") is not None
         ]
+        # Guardrail metrics used to accept or reject the repaired polygon.
         max_proj_dist = max(projection_distances) if projection_distances else float("inf")
         retained_ratio = len(repaired_pts) / float(len(projected_vertices)) if projected_vertices else 0.0
 
@@ -430,6 +444,7 @@ class IndexPreservingPolygonAugmentor:
         retention_ok = retained_ratio >= min_retained_vertex_ratio_for_repair
 
         if not has_dup and is_valid and is_simple and projection_ok and retention_ok:
+            # Replace extracted points with index-ordered repaired points.
             lm_shapes[0]["points"] = repaired_pts
             return True, True, None, repair_max_projection_distance, repair_retained_vertex_ratio
 
@@ -589,6 +604,7 @@ class IndexPreservingPolygonAugmentor:
         mask = np.zeros((height, width), dtype=np.uint8)
         if len(points) < 3:
             return mask
+        # Round float coordinates to raster space before filling.
         cv2.fillPoly(mask, [np.round(np.array(points, dtype=np.float32)).astype(np.int32)], 255)
         return mask
 
@@ -627,6 +643,7 @@ class IndexPreservingPolygonAugmentor:
             if n_out < 3 or n_in < 3:
                 return outer
             outer_a, inner_b = nearest_pair(outer, inner)
+            # Bridge outer and inner boundaries into one LabelMe-compatible polygon ring.
             outer_seq = np.vstack([outer[outer_a:], outer[: outer_a + 1]])
             inner_seq = np.vstack([inner[inner_b:], inner[: inner_b + 1]])[::-1]
             outer_a_pt = outer[outer_a : outer_a + 1]
@@ -634,6 +651,7 @@ class IndexPreservingPolygonAugmentor:
             return np.vstack([outer_seq, inner_b_pt, inner_seq, outer_a_pt])
 
         for idx, cnt in enumerate(contours):
+            # Process only top-level contours here; children are treated as holes.
             if hierarchy[idx][3] != -1:
                 continue
             if float(cv2.contourArea(cnt)) < min_component_area:
@@ -672,6 +690,7 @@ class IndexPreservingPolygonAugmentor:
                 hole_approx = cv2.approxPolyDP(hcnt, simplify_epsilon, True).reshape(-1, 2).astype(np.float64)
                 if len(hole_approx) < 3:
                     continue
+                # Incrementally merge each hole into the current ring path.
                 ring_points = make_ring_polygon(ring_points, hole_approx)
 
             if len(ring_points) >= 3:
@@ -741,6 +760,7 @@ class IndexPreservingPolygonAugmentor:
                     best_comp = ci
 
         if best_comp == -1:
+            # Fallback if all points violate separation constraints.
             return IndexPreservingPolygonAugmentor._nearest_point_on_contours(x, y, contours)
         return best_pt, best_dist, best_comp
 
@@ -910,9 +930,11 @@ class IndexPreservingPolygonAugmentor:
         }
 
         with open(out_json_dir / aug_json_name, "w", encoding="utf-8") as f:
+            # Standard LabelMe JSON for regular downstream tooling.
             json.dump({**base_json_common, "imagePath": json_rel_image_path, "shapes": labelme_shapes}, f, indent=2)
 
         with open(out_index_json_dir / aug_json_name, "w", encoding="utf-8") as f:
+            # Extended JSON with index-projection diagnostics for debugging.
             json.dump(
                 {**base_json_common, "imagePath": index_rel_image_path, "shapes": labelme_shapes, **indexed_payload},
                 f,
@@ -965,6 +987,7 @@ class IndexPreservingPolygonAugmentor:
         out_debug_dir = out_index_json_dir.parent / "debug_bridge_plots"
         out_debug_dir.mkdir(parents=True, exist_ok=True)
 
+        # Iterate over source LabelMe files and emit augmented samples.
         json_files = sorted(label_dir.glob("*.json"))
         if not json_files:
             raise FileNotFoundError(f"No JSON files found in: {label_dir}")
@@ -993,6 +1016,7 @@ class IndexPreservingPolygonAugmentor:
                 n_aug = self._resolve_aug_count(num_augmentations, augmentation_params)
 
                 for aug_iter in range(n_aug):
+                    # Transform image, masks, and flattened keypoints in one synchronized call.
                     transformed = self._build_transform(h, w, augmentation_params)(
                         image=image, masks=source_masks, keypoints=flat_keypoints
                     )
@@ -1007,6 +1031,7 @@ class IndexPreservingPolygonAugmentor:
                     for src_idx, (shape, mask) in enumerate(zip(raw_shapes, aug_masks)):
                         label = str(shape.get("label", ""))
                         mask_u8 = np.array(mask, dtype=np.uint8)
+                        # Skip tiny masks that are too small for stable contour extraction.
                         if int(np.count_nonzero(mask_u8)) < repair_params["min_mask_pixel_area"]:
                             continue
 
@@ -1051,6 +1076,7 @@ class IndexPreservingPolygonAugmentor:
                         )
 
                         labelme_shapes.extend(lm_shapes)
+                        # Persist per-shape projection and repair diagnostics.
                         projected_indexed_shapes.append(
                             self._build_projected_shape_payload(
                                 src_idx=src_idx,
@@ -1088,6 +1114,7 @@ class IndexPreservingPolygonAugmentor:
                         debug_plot_saved_count += 1
 
                     if not labelme_shapes:
+                        # Drop augmentations where every shape became invalid after filtering.
                         continue
 
                     self._save_outputs(
@@ -1106,6 +1133,7 @@ class IndexPreservingPolygonAugmentor:
                     saved_count += 1
 
             except Exception as e:
+                # Continue processing remaining files; optionally print per-file errors.
                 if self.debug:
                     tqdm.write(f"[ERROR] {json_path.name}: {e}")
 
