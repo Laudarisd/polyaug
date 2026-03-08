@@ -8,7 +8,11 @@ name = "ringaug"
 version = "0.1.0"
 description = "Polygon topology augmentation CLI for LabelMe datasets."
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+]
 dependencies = [
     "albumentations>=2.0.8",
     "matplotlib>=3.8",
