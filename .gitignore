@@ -18,12 +18,12 @@
 # Keep only the core package entry points
 !src/
 src/*
-!src/ringaug/
-src/ringaug/*
-!src/ringaug/__init__.py
-!src/ringaug/augmentor.py
-!src/ringaug/helper.py
-!src/ringaug/cli.py
+!src/polyaug/
+src/polyaug/*
+!src/polyaug/__init__.py
+!src/polyaug/augmentor.py
+!src/polyaug/helper.py
+!src/polyaug/cli.py
 !tests/
 tests/*
 !tests/test_imports.py

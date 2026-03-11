@@ -1,6 +1,6 @@
 """Command-line entrypoint wiring parser config to the augmentation engine."""
 
-from ringaug.helper import build_parser, build_runtime_config, print_run_summary
+from polyaug.helper import build_parser, build_runtime_config, print_run_summary
 
 
 def main() -> None:
