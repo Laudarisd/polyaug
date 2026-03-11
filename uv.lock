@@ -666,7 +666,7 @@ wheels = [
 
 [[package]]
 name = "polyaug"
-version = "0.1.2"
+version = "0.1.4"
 source = { editable = "." }
 dependencies = [
     { name = "albumentations" },

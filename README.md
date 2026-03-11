@@ -153,7 +153,7 @@ You can cite PolyAug as:
   title={PolyAug: Topology-Aware Polygon Augmentation for Segmentation Datasets},
   author={Laudari, Sudip},
   year={2026},
-  version={0.1.2},
+  version={0.1.4},
   url={https://pypi.org/project/polyaug/}
 }
 ```
