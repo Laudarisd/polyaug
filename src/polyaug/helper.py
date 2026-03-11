@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--index-json-dir",
         default="",
-        help="Optional indexed JSON output directory. Defaults to <save>/augmented_index_json",
+        help="Optional indexed JSON output directory. Disabled by default.",
     )
 
     # Augmentation count control.
@@ -103,7 +103,7 @@ def build_runtime_config(args: argparse.Namespace, parser: argparse.ArgumentPars
     # Resolve derived output directories from the chosen save root.
     save_img_dir = save_root / "images"
     save_json_dir = save_root / "json"
-    save_index_json_dir = Path(args.index_json_dir) if args.index_json_dir else save_root / "augmented_index_json"
+    save_index_json_dir = Path(args.index_json_dir) if args.index_json_dir else None
 
     # Build the parameter bag consumed by the augmentation engine.
     augmentation_params = {
@@ -153,7 +153,7 @@ def build_runtime_config(args: argparse.Namespace, parser: argparse.ArgumentPars
         "save_img_dir": save_img_dir,
         # Output folder for augmented JSON annotations.
         "save_json_dir": save_json_dir,
-        # Output folder for index-projection debug JSON.
+        # Optional output folder for index-projection debug JSON.
         "save_index_json_dir": save_index_json_dir,
         # Number of augmentations to generate per source image.
         "num_per_image": args.num_per_image,
@@ -196,4 +196,4 @@ def print_run_summary(runtime: dict) -> None:
     print("Save_dir:", runtime["save_root"])
     print("Output Images:", runtime["save_img_dir"])
     print("Output Json:", runtime["save_json_dir"])
-    print("Output Indexed Json:", runtime["save_index_json_dir"])
+    print("Output Indexed Json:", runtime["save_index_json_dir"] if runtime["save_index_json_dir"] else "disabled")

@@ -82,7 +82,7 @@ Inside `--save-dir`, PolyAug writes:
 
 * `images/` → augmented images
 * `json/` → standard LabelMe JSON annotations
-* `augmented_index_json/` → indexed/debug JSON annotations
+* `augmented_index_json/` → indexed/debug JSON annotations, only when `--index-json-dir` is provided
 
 ---
 
@@ -153,7 +153,7 @@ You can cite PolyAug as:
   title={PolyAug: Topology-Aware Polygon Augmentation for Segmentation Datasets},
   author={Laudari, Sudip},
   year={2026},
-  version={0.1.4},
+  version={0.1.5},
   url={https://pypi.org/project/polyaug/}
 }
 ```

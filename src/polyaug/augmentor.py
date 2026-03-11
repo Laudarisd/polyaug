@@ -5,7 +5,7 @@ import os
 import random
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import albumentations as A
 import cv2
@@ -904,11 +904,12 @@ class IndexPreservingPolygonAugmentor:
         base_name: str,
         out_img_dir: Path,
         out_json_dir: Path,
-        out_index_json_dir: Path,
+        out_index_json_dir: Optional[Path],
     ) -> None:
         out_img_dir.mkdir(parents=True, exist_ok=True)
         out_json_dir.mkdir(parents=True, exist_ok=True)
-        out_index_json_dir.mkdir(parents=True, exist_ok=True)
+        if out_index_json_dir is not None:
+            out_index_json_dir.mkdir(parents=True, exist_ok=True)
 
         suffix = uuid.uuid4().hex[:6]
         aug_img_name = f"{base_name}_{suffix}_aug.png"
@@ -919,8 +920,6 @@ class IndexPreservingPolygonAugmentor:
 
         # Keep LabelMe imagePath relative to each JSON location.
         json_rel_image_path = Path(os.path.relpath(aug_img_path, start=out_json_dir)).as_posix()
-        index_rel_image_path = Path(os.path.relpath(aug_img_path, start=out_index_json_dir)).as_posix()
-
         base_json_common = {
             "version": original_data.get("version", "5.5.0"),
             "flags": original_data.get("flags", {}),
@@ -933,13 +932,15 @@ class IndexPreservingPolygonAugmentor:
             # Standard LabelMe JSON for regular downstream tooling.
             json.dump({**base_json_common, "imagePath": json_rel_image_path, "shapes": labelme_shapes}, f, indent=2)
 
-        with open(out_index_json_dir / aug_json_name, "w", encoding="utf-8") as f:
-            # Extended JSON with index-projection diagnostics for debugging.
-            json.dump(
-                {**base_json_common, "imagePath": index_rel_image_path, "shapes": labelme_shapes, **indexed_payload},
-                f,
-                indent=2,
-            )
+        if out_index_json_dir is not None:
+            index_rel_image_path = Path(os.path.relpath(aug_img_path, start=out_index_json_dir)).as_posix()
+            with open(out_index_json_dir / aug_json_name, "w", encoding="utf-8") as f:
+                # Extended JSON with index-projection diagnostics for debugging.
+                json.dump(
+                    {**base_json_common, "imagePath": index_rel_image_path, "shapes": labelme_shapes, **indexed_payload},
+                    f,
+                    indent=2,
+                )
 
     # Build one index/debug record for a source polygon.
     @staticmethod
@@ -975,7 +976,7 @@ class IndexPreservingPolygonAugmentor:
         json_dir: Union[str, Path],
         save_img_dir: Union[str, Path],
         save_json_dir: Union[str, Path],
-        save_index_json_dir: Union[str, Path],
+        save_index_json_dir: Optional[Union[str, Path]],
         num_augmentations: Union[int, str],
         augmentation_params: Dict[str, Any],
     ) -> None:
@@ -983,9 +984,10 @@ class IndexPreservingPolygonAugmentor:
         label_dir = Path(json_dir)
         out_img_dir = Path(save_img_dir)
         out_json_dir = Path(save_json_dir)
-        out_index_json_dir = Path(save_index_json_dir)
-        out_debug_dir = out_index_json_dir.parent / "debug_bridge_plots"
-        out_debug_dir.mkdir(parents=True, exist_ok=True)
+        out_index_json_dir = Path(save_index_json_dir) if save_index_json_dir else None
+        out_debug_dir = out_index_json_dir.parent / "debug_bridge_plots" if out_index_json_dir is not None else None
+        if out_debug_dir is not None:
+            out_debug_dir.mkdir(parents=True, exist_ok=True)
 
         # Iterate over source LabelMe files and emit augmented samples.
         json_files = sorted(label_dir.glob("*.json"))
@@ -1093,25 +1095,26 @@ class IndexPreservingPolygonAugmentor:
                         )
 
                         # Save index-only debug plot for each processed shape.
-                        if len(lm_shapes) == 1:
-                            debug_nonbroken_bridge_count += 1
-                        self._save_bridge_debug_plot(
-                            base_name=base_name,
-                            aug_iter=aug_iter,
-                            src_idx=src_idx,
-                            class_label=label,
-                            original_image=image,
-                            aug_image=aug_image,
-                            source_points=shape.get("points", []),
-                            final_shape_points=(lm_shapes[0].get("points", []) if lm_shapes else []),
-                            source_mask=np.array(source_masks[src_idx], dtype=np.uint8),
-                            aug_mask=mask_u8,
-                            projected_vertices=projected_vertices,
-                            overlap_pairs=overlap_constraints["overlap_pairs"],
-                            min_component_area=repair_params["min_component_area"],
-                            out_debug_dir=out_debug_dir,
-                        )
-                        debug_plot_saved_count += 1
+                        if out_debug_dir is not None:
+                            if len(lm_shapes) == 1:
+                                debug_nonbroken_bridge_count += 1
+                            self._save_bridge_debug_plot(
+                                base_name=base_name,
+                                aug_iter=aug_iter,
+                                src_idx=src_idx,
+                                class_label=label,
+                                original_image=image,
+                                aug_image=aug_image,
+                                source_points=shape.get("points", []),
+                                final_shape_points=(lm_shapes[0].get("points", []) if lm_shapes else []),
+                                source_mask=np.array(source_masks[src_idx], dtype=np.uint8),
+                                aug_mask=mask_u8,
+                                projected_vertices=projected_vertices,
+                                overlap_pairs=overlap_constraints["overlap_pairs"],
+                                min_component_area=repair_params["min_component_area"],
+                                out_debug_dir=out_debug_dir,
+                            )
+                            debug_plot_saved_count += 1
 
                     if not labelme_shapes:
                         # Drop augmentations where every shape became invalid after filtering.
@@ -1138,7 +1141,7 @@ class IndexPreservingPolygonAugmentor:
                     tqdm.write(f"[ERROR] {json_path.name}: {e}")
 
         print(f"[DONE] Saved {saved_count} augmented samples.")
-        if self.debug:
+        if self.debug and out_debug_dir is not None:
             print(
                 "[DEBUG] Bridge plot summary: "
                 f"bridge_candidates={debug_bridge_candidate_count}, "
