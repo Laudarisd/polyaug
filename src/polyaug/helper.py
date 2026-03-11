@@ -1,4 +1,4 @@
-"""CLI argument parsing and runtime configuration helpers for RingAug."""
+"""CLI argument parsing and runtime configuration helpers for PolyAug."""
 
 import argparse
 from importlib import metadata
@@ -7,19 +7,19 @@ from typing import Sequence
 
 
 def _get_installed_version() -> str:
-    # Resolve installed package version for `ringaug --version`.
+    # Resolve installed package version for `polyaug --version`.
     try:
-        return metadata.version("ringaug")
+        return metadata.version("polyaug")
     except metadata.PackageNotFoundError:
         # Fallback when running from source without an installed distribution.
         return "unknown"
 
 
 def build_parser() -> argparse.ArgumentParser:
-    # Create the root CLI parser for the ringaug command.
+    # Create the root CLI parser for the polyaug command.
     parser = argparse.ArgumentParser(
-        prog="ringaug",
-        description="Run RingAug polygon augmentation on LabelMe image/json datasets.",
+        prog="polyaug",
+        description="Run PolyAug polygon augmentation on LabelMe image/json datasets.",
     )
     # Support quick CLI version inspection without requiring data arguments.
     parser.add_argument("--version", action="version", version=f"%(prog)s {_get_installed_version()}")

@@ -15,7 +15,7 @@ def main() -> None:
     print_run_summary(runtime)
 
     # Delay heavy import until after argument validation.
-    from ringaug.augmentor import IndexPreservingPolygonAugmentor
+    from polyaug.augmentor import IndexPreservingPolygonAugmentor
 
     # Instantiate augmentor and execute dataset augmentation.
     # The debug flag is forwarded from CLI for verbose internals when needed.
@@ -39,5 +39,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Allow running as `python -m ringaug.cli`.
+    # Allow running as `python -m polyaug.cli`.
     main()

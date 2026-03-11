@@ -1,4 +1,4 @@
-"""RingAug package public API."""
+"""PolyAug package public API."""
 
 from .helper import build_parser, build_runtime_config, print_run_summary
 from .augmentor import IndexPreservingPolygonAugmentor
