@@ -149,12 +149,11 @@ polyaug/
 You can cite PolyAug as:
 
 ```bibtex
-@software{laudari2026polyaug,
-  title={PolyAug: Topology-Aware Polygon Augmentation for Segmentation Datasets},
-  author={Laudari, Sudip},
-  year={2026},
-  version={0.1.5},
-  url={https://pypi.org/project/polyaug/}
+@article{laudari2026topology,
+  title={Topology-Preserving Data Augmentation for Ring-Type Polygon Annotations},
+  author={Laudari, Sudip and Baek, Sang Hun},
+  journal={arXiv preprint arXiv:2603.14764},
+  year={2026}
 }
 ```
 
